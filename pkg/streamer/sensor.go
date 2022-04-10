@@ -3,7 +3,7 @@ package streamer
 import (
 	"encoding/binary"
 	"log"
-	"os"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -101,8 +101,7 @@ func processIntfCapture(config *config.Config, agentPktOutputChannel chan string
 	if len(config.CapturePorts) == 0 && len(config.CaptureInterfacesPorts) == 0 {
 		captureHandles, err := initAllInterfaces(config)
 		if err != nil {
-			log.Printf("Unable to init interfaces:%v\n", err)
-			os.Exit(1)
+			log.Fatalf("Unable to init interfaces:%v\n", err)
 		}
 		for _, intf := range captureHandles {
 			wg.Add(1)
@@ -124,8 +123,7 @@ func processIntfCapture(config *config.Config, agentPktOutputChannel chan string
 			if capturing[intfPorts.name] == nil {
 				handle, err := initInterface(config, intfPorts.name, intfPorts.ports)
 				if err != nil {
-					log.Printf("Unable to init interface%v: %v\n", intfPorts.name, err)
-					os.Exit(1)
+					log.Fatalf("Unable to init interface %v: %v\n", intfPorts.name, err)
 				}
 				capturing[intfPorts.name] = handle
 				wg.Add(1)
@@ -135,7 +133,11 @@ func processIntfCapture(config *config.Config, agentPktOutputChannel chan string
 				}(handle)
 				log.Printf("New interface setup: %v\n", intfPorts.name)
 			} else {
-				filter := strings.Replace(createBpfString(config, intfPorts.ports), bpfParamInputDelimiter, bpfParamOutputDelimiter, -1)
+				bpfString, err := createBpfString(config, net.DefaultResolver, intfPorts.ports)
+				if err != nil {
+					log.Fatalf("Could not generate BPF filter: %v\n", err)
+				}
+				filter := strings.Replace(bpfString, bpfParamInputDelimiter, bpfParamOutputDelimiter, -1)
 				if filter != "" {
 					log.Printf("Existing interface %v updated with: %v\n", intfPorts.name, filter)
 					capturing[intfPorts.name].SetBPFFilter(filter)
